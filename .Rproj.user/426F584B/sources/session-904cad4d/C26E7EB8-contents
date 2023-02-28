@@ -1,0 +1,158 @@
+---
+title: "Untitled"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+# Package names
+packages <- c("ggplot2", "here", "dplyr", "tidyr", "rio", "knitr", "lubridate", "flexdashboard", "ggplot2", "readr", "data.table")
+
+# Install packages not yet installed
+installed_packages <- packages %in% rownames(installed.packages())
+if (any(installed_packages == FALSE)) {
+  install.packages(packages[!installed_packages])
+}
+
+# Packages loading
+invisible(lapply(packages, library, character.only = TRUE))
+
+#import raw data
+raw_df <- read_csv("./public2021.csv")
+
+# select specific variables needed 
+df <- raw_df %>%
+  select(c("CaseID", "ED0", "CH2", "CH3", "ppagecat", "ppethm", "ppracem", "pphispan", "ppcm0160", "I40", "D1G", "ED0B")) %>%
+  rename("id" = "CaseID",
+         "edu" = "ED0",
+         "mother_edu" = "CH2",
+         "father_edu" = "CH3",
+         "income" = "I40",
+         "age" = "ppagecat",
+         "race_hisp" = "ppethm",
+         "job" = "ppcm0160",
+         "race_alone" = "ppracem",
+         "hisp_alone" = "pphispan",
+         "current_student" = "ED0B",
+         "current_student_type" = "D1G")
+
+# data frame with current first generation students in college
+first_gen_Withcurrent_df <- df %>%
+    mutate(current_student1 = ifelse( (current_student %in% "Bachelor’s degree") | (current_student %in% "Master’s degree") | (current_student %in% "Professional degree (e.g., MBA, MD, JD)") | (current_student %in% "Doctoral degree"),
+                                      "1", "0")) %>% 
+    mutate(college_degree_with_current = ifelse((edu %in% "Bachelor’s degree") | (edu %in% "Master’s degree") | (edu %in% "Graduate degree") | (current_student1 %in% "1"), 
+                               "1", "0"))  %>%
+  mutate(college_degree_obtained = ifelse((edu %in% "Bachelor’s degree") | (edu %in% "Master’s degree") | (edu %in% "Graduate degree"), 
+                               "1", "0")) %>%
+    filter(college_degree_with_current == "1") %>%
+    mutate(first_gen = ifelse( (father_edu %in% "Bachelor’s degree") | (father_edu %in% "Master’s degree") |
+                                 (mother_edu %in% "Graduate degree") | 
+                                 (mother_edu %in% "Bachelor’s degree") | (mother_edu %in% "Master’s degree") |
+                                 (mother_edu %in% "Graduate degree"),
+                               "cont_edu", "first_gen"))
+
+# data frame only with first generation college students that already have obtained their degree 
+first_gen_Withoutcurrent_df <- df %>%
+    mutate(current_student1 = ifelse( (current_student %in% "Bachelor’s degree") | (current_student %in% "Master’s degree") | (current_student %in% "Professional degree (e.g., MBA, MD, JD)") | (current_student %in% "Doctoral degree"),
+                                      "1", "0")) %>% 
+    mutate(college_degree_with_current = ifelse((edu %in% "Bachelor’s degree") | (edu %in% "Master’s degree") | (edu %in% "Graduate degree") | (current_student1 %in% "1"), 
+                               "1", "0"))  %>%
+  mutate(college_degree_obtained = ifelse((edu %in% "Bachelor’s degree") | (edu %in% "Master’s degree") | (edu %in% "Graduate degree"), 
+                               "1", "0")) %>%
+    filter(college_degree_obtained == "1") %>%
+    mutate(first_gen = ifelse( (father_edu %in% "Bachelor’s degree") | (father_edu %in% "Master’s degree") |
+                                 (mother_edu %in% "Graduate degree") | 
+                                 (mother_edu %in% "Bachelor’s degree") | (mother_edu %in% "Master’s degree") |
+                                 (mother_edu %in% "Graduate degree"),
+                               "cont_edu", "first_gen")) 
+
+first_gen_Withoutcurrent_df <- filter(first_gen_Withoutcurrent_df, job != "Refused") 
+first_gen_Withoutcurrent_df <- filter(first_gen_Withoutcurrent_df, job != "Not asked") 
+first_gen_Withoutcurrent_df <- filter(first_gen_Withoutcurrent_df, job != "Other (Please specify)") 
+
+df_percent <- first_gen_Withoutcurrent_df %>%
+  group_by(job, first_gen) %>%
+  summarise(count = n()) %>%
+  mutate(percentage = count / sum(count) * 100)
+
+df_income_percent <- first_gen_Withoutcurrent_df %>%
+  group_by(income, first_gen) %>%
+  summarise(count = n()) %>%
+  mutate(percentage = count / sum(count) * 100)
+```
+
+Column {data-width=650}
+-----------------------------------------------------------------------
+
+### Chart A
+
+```{r}
+ggplot(first_gen_Withcurrent_df, aes(y=first_gen)) +
+    geom_bar(aes(fill = race_hisp)) + 
+  labs(title = "Demographic Makeup of Current and Degree Obtained First-Generation \n\ College Students in 2020", caption = "Data source: 2021 Survey of Household Economics and Decisionmaking", x = "Count", y = "Generation Type", fill = "Race and Ethnicity") + 
+  theme_classic()
+```
+
+Column {data-width=350}
+-----------------------------------------------------------------------
+
+### Chart B
+
+```{r}
+df_percent %>%
+  na.omit(job) %>%
+ggplot(aes(x = percentage, y = job, fill = first_gen)) +
+  geom_bar(stat = "identity") + 
+  theme(plot.margin = unit(c(1, 1, 1, 1), "cm"),
+        axis.text.y = element_text(size = 5),
+        axis.title.y = element_text(size = 10))
+```
+
+### Chart C
+
+```{r}
+plt <- df_income_percent %>%
+  na.omit() %>%
+  ggplot() +
+  # Make custom panel grid
+  # geom_hline(
+  #   aes(yintercept = y), 
+  #   data.frame(y = c(0:3) * 1000),
+  #   color = "lightgrey"
+  # ) + 
+  # Add bars to represent the cumulative track lengths
+  # str_wrap(region, 5) wraps the text so each line has at most 5 characters
+  # (but it doesn't break long words!)
+  geom_col(
+    aes(
+      x = income,
+      y = count,
+      fill = first_gen
+    ),
+    position = "dodge2",
+    show.legend = TRUE,
+    alpha = .9
+  ) +
+  # Make it circular!
+  coord_polar() + 
+    # Customize general theme
+  theme(
+    # Set default color and font family for the text
+#    text = element_text(color = "gray12", family = "Bell MT"),
+    
+    # Customize the text in the title, subtitle, and caption
+     plot.title = element_text(face = "bold", size = 25, hjust = 0.05),
+     plot.subtitle = element_text(size = 14, hjust = 0.05),
+     plot.caption = element_text(size = 10, hjust = .5))
+    # 
+    # Make the background white and remove extra grid lines
+    # panel.background = element_rect(fill = "white", color = "white"),
+    # panel.grid = element_blank(),
+    # panel.grid.major.x = element_blank())
+
+plt
+```
+
